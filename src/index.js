@@ -7,7 +7,37 @@ import { runSASTScanner } from './scanners/sast.js';
 import { calculateScore, categorizeSeverity } from './scoring.js';
 import { generateMarkdownReport } from './reporters/markdown.js';
 import { generateHTMLReport } from './reporters/html.js';
-import { writeFileSync } from 'fs';
+import { writeFileSync, readdirSync, statSync } from 'fs';
+
+const COUNT_EXTENSIONS = new Set([
+  '.js', '.ts', '.jsx', '.tsx', '.py', '.go', '.rb', '.java',
+  '.env', '.yaml', '.yml', '.json', '.toml', '.cfg', '.conf',
+  '.properties', '.sh', '.sql', '.tf',
+]);
+const COUNT_IGNORE = new Set([
+  'node_modules', '.git', 'dist', 'build', '.next', '__pycache__',
+  'venv', '.venv', 'vendor', '.cache', 'coverage',
+  'test', 'tests', '__tests__', '__mocks__', 'fixtures',
+]);
+
+function countFiles(dir, depth = 10) {
+  if (depth <= 0) return 0;
+  let count = 0;
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') && !entry.name.startsWith('.env')) continue;
+      if (COUNT_IGNORE.has(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        count += countFiles(full, depth - 1);
+      } else if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (COUNT_EXTENSIONS.has(ext) || entry.name.startsWith('.env')) count++;
+      }
+    }
+  } catch {}
+  return count;
+}
 
 export async function runScan(targetPath, options = {}) {
   const absPath = path.resolve(targetPath);
@@ -70,7 +100,8 @@ export async function runScan(targetPath, options = {}) {
   else if (score >= 70) grade = 'C';
   else if (score >= 60) grade = 'D';
 
-  const result = { score, grade, counts, findings: filtered, scannedFiles: filtered.length, duration: parseFloat(scanDuration) };
+  const scannedFiles = countFiles(absPath);
+  const result = { score, grade, counts, findings: filtered, scannedFiles, duration: parseFloat(scanDuration) };
 
   // JSON output to stdout — print ONLY JSON, nothing else
   if (options.json) {
