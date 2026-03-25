@@ -53,24 +53,38 @@ export async function POST(request: Request) {
         return new NextResponse("Missing repo URL", { status: 400 });
       }
 
-      // Normalize URL — accept various GitHub URL formats
-      let cleanUrl = repoUrl.trim();
-      if (!cleanUrl.startsWith("https://") && !cleanUrl.startsWith("http://")) {
-        cleanUrl = `https://${cleanUrl}`;
+      // Parse and strictly validate the GitHub URL
+      const repoUrlStr = repoUrl.trim().replace(/\.git$/, "").replace(/\/+$/, "");
+      let parsed: URL;
+      try {
+        parsed = new URL(
+          repoUrlStr.startsWith("http") ? repoUrlStr : `https://${repoUrlStr}`
+        );
+      } catch {
+        return new NextResponse("Invalid URL", { status: 400 });
       }
-      // Strip trailing slashes, .git suffix
-      cleanUrl = cleanUrl.replace(/\/+$/, "").replace(/\.git$/, "");
 
-      if (!cleanUrl.includes("github.com/")) {
+      if (parsed.hostname !== "github.com" && parsed.hostname !== "www.github.com") {
         return new NextResponse("Only public GitHub repos are supported", {
           status: 400,
         });
       }
 
+      // Extract owner/repo from pathname, reject anything weird
+      const parts = parsed.pathname.replace(/^\/+/, "").split("/");
+      if (parts.length < 2 || !parts[0] || !parts[1]) {
+        return new NextResponse("Invalid GitHub repo URL. Expected: github.com/owner/repo", {
+          status: 400,
+        });
+      }
+      const owner = parts[0].replace(/[^a-zA-Z0-9_.-]/g, "");
+      const repo = parts[1].replace(/[^a-zA-Z0-9_.-]/g, "");
+      const safeCloneUrl = `https://github.com/${owner}/${repo}.git`;
+
       const codeDir = join(workDir, "repo");
 
       // Shallow clone — fast, only latest commit
-      await exec("git", ["clone", "--depth", "1", `${cleanUrl}.git`, codeDir], {
+      await exec("git", ["clone", "--depth", "1", safeCloneUrl, codeDir], {
         timeout: 60000,
       }).catch(() => {
         throw new Error(
