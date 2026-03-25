@@ -26,6 +26,26 @@ const SECRET_PATTERNS = [
   { name: 'Generic Secret Assignment', regex: /(password|secret|token|api_key|apikey|api_secret|access_token|auth_token|credentials)\s*[=:]\s*['"][A-Za-z0-9+/=_-]{8,}['"]/i, severity: 'high' },
   { name: 'Database Connection String', regex: /(mongodb(\+srv)?|postgres(ql)?|mysql|redis):\/\/[^\s'"]+:[^\s'"]+@[^\s'"]+/, severity: 'critical' },
   { name: 'Hardcoded JWT Secret', regex: /(jwt_secret|JWT_SECRET|jwtSecret)\s*[=:]\s*['"][^'"]{8,}['"]/, severity: 'critical' },
+  // Tier 2: Additional secret patterns
+  { name: 'GitHub Fine-Grained PAT', regex: /github_pat_[A-Za-z0-9_]{22,255}/, severity: 'critical' },
+  { name: 'Google Cloud Service Account Key', regex: /"type"\s*:\s*"service_account"/, minContext: /"private_key"/i, severity: 'critical' },
+  { name: 'Azure Connection String', regex: /DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{40,}/, severity: 'critical' },
+  { name: 'Azure Storage SAS Token', regex: /[?&]sig=[A-Za-z0-9%+/=]{40,}/, minContext: /\.blob\.core\.windows\.net|\.queue\.core\.windows\.net|\.table\.core\.windows\.net/i, severity: 'critical' },
+  { name: 'HuggingFace Token', regex: /hf_[A-Za-z0-9]{34,}/, severity: 'critical' },
+  { name: 'Datadog API Key', regex: /(?:DD_API_KEY|datadog_api_key|DATADOG_API_KEY)\s*[=:]\s*['"]?[a-f0-9]{32}['"]?/i, severity: 'high' },
+  { name: 'Slack App-Level Token', regex: /xapp-[0-9]+-[A-Za-z0-9]+-[0-9]+-[a-f0-9]+/, severity: 'critical' },
+  { name: 'Slack Webhook URL', regex: /hooks\.slack\.com\/services\/T[A-Z0-9]+\/B[A-Z0-9]+\/[A-Za-z0-9]+/, severity: 'high' },
+  { name: 'Vercel Token', regex: /vercel_[A-Za-z0-9_-]{24,}/, severity: 'critical' },
+  { name: 'Netlify Token', regex: /nfp_[A-Za-z0-9]{40,}/, severity: 'critical' },
+  { name: 'Replicate API Token', regex: /r8_[A-Za-z0-9]{36,}/, severity: 'critical' },
+  { name: 'Clerk Secret Key', regex: /sk_live_[A-Za-z0-9]{24,}/, minContext: /clerk/i, severity: 'critical' },
+  { name: 'Discord Bot Token', regex: /[MN][A-Za-z0-9]{23,}\.[A-Za-z0-9-_]{6}\.[A-Za-z0-9-_]{27,}/, severity: 'critical' },
+  { name: 'Telegram Bot Token', regex: /[0-9]{8,10}:[A-Za-z0-9_-]{35}/, minContext: /telegram|bot_token|TELEGRAM/i, severity: 'high' },
+  { name: 'HashiCorp Vault Token', regex: /hvs\.[A-Za-z0-9_-]{24,}/, severity: 'critical' },
+  { name: 'Doppler Token', regex: /dp\.st\.[A-Za-z0-9_-]{40,}/, severity: 'critical' },
+  { name: 'Linear API Key', regex: /lin_api_[A-Za-z0-9]{40,}/, severity: 'high' },
+  { name: 'Planetscale Token', regex: /pscale_tkn_[A-Za-z0-9_-]{40,}/, severity: 'critical' },
+  { name: 'Turso Database Token', regex: /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/, minContext: /turso|libsql|TURSO/i, severity: 'critical' },
 ];
 
 const IGNORE_DIRS = new Set([

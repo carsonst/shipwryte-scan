@@ -283,6 +283,268 @@ const SAST_RULES = [
     description: 'The .gitignore file does not appear to include .env files. Environment files often contain secrets.',
     recommendation: 'Add `.env*` to your .gitignore file to prevent committing secrets.',
   },
+
+  // ========== TIER 1: HIGH IMPACT ADDITIONS ==========
+
+  // Path Traversal (CWE-22)
+  {
+    id: 'path-traversal',
+    title: 'Potential Path Traversal',
+    pattern: /(?:readFile|readFileSync|createReadStream|writeFile|writeFileSync|unlink|unlinkSync|access|accessSync|stat|statSync|open|openSync)\s*\([^)]*(?:req\.|request\.|params\.|query\.|body\.|\$\{)/,
+    fileTypes: ['.js', '.ts'],
+    severity: 'critical',
+    description: 'File system operation uses user-controlled input, which can allow attackers to read or write arbitrary files via path traversal (../).',
+    recommendation: 'Validate and sanitize file paths. Use path.resolve() and verify the resolved path is within an allowed directory.',
+  },
+  {
+    id: 'path-traversal-express',
+    title: 'Potential Path Traversal via sendFile/download',
+    pattern: /(?:sendFile|download|sendfile)\s*\([^)]*(?:req\.|request\.|params\.|query\.|body\.|\$\{)/,
+    fileTypes: ['.js', '.ts'],
+    severity: 'critical',
+    description: 'File serving operation uses user-controlled input. Attackers can traverse directories to access sensitive files.',
+    recommendation: 'Use a static file middleware with a root directory constraint. Validate paths before serving files.',
+  },
+
+  // SSRF - Server-Side Request Forgery (CWE-918)
+  {
+    id: 'ssrf-fetch',
+    title: 'Potential Server-Side Request Forgery (SSRF)',
+    pattern: /(?:fetch|axios\.get|axios\.post|axios\(|http\.get|https\.get|request\(|got\(|ky\(|needle\()\s*\([^)]*(?:req\.|request\.|params\.|query\.|body\.|\$\{)/,
+    fileTypes: ['.js', '.ts', '.jsx', '.tsx'],
+    severity: 'critical',
+    description: 'HTTP request is made with a user-controlled URL. Attackers can use this to access internal services, cloud metadata endpoints, or other restricted resources.',
+    recommendation: 'Validate URLs against an allowlist. Block requests to private/internal IP ranges (10.x, 172.16-31.x, 192.168.x, 169.254.169.254). Use a URL parser to verify the hostname before making the request.',
+  },
+
+  // Weak Cryptography (CWE-327)
+  {
+    id: 'weak-crypto-md5',
+    title: 'Weak Hash Algorithm: MD5',
+    pattern: /(?:createHash|hashlib\.md5|MD5|md5)\s*\(\s*['"]?md5['"]?\s*\)|(?:crypto\.createHash)\s*\(\s*['"]md5['"]\)/i,
+    fileTypes: ['.js', '.ts', '.py', '.go', '.java'],
+    severity: 'high',
+    description: 'MD5 is cryptographically broken and should not be used for security purposes (passwords, integrity checks, signatures).',
+    recommendation: 'Use SHA-256 or SHA-3 for hashing. Use bcrypt, argon2, or scrypt for passwords.',
+  },
+  {
+    id: 'weak-crypto-sha1',
+    title: 'Weak Hash Algorithm: SHA-1',
+    pattern: /(?:crypto\.createHash)\s*\(\s*['"]sha1?['"]\)|hashlib\.sha1/i,
+    fileTypes: ['.js', '.ts', '.py', '.go', '.java'],
+    severity: 'high',
+    description: 'SHA-1 is deprecated and vulnerable to collision attacks. It should not be used for security purposes.',
+    recommendation: 'Use SHA-256 or SHA-3 instead of SHA-1.',
+  },
+  {
+    id: 'weak-crypto-des',
+    title: 'Weak Encryption: DES/RC4',
+    pattern: /(?:createCipher(?:iv)?)\s*\(\s*['"](?:des|des-ede|des-ede3|rc4|rc2)['"]/i,
+    fileTypes: ['.js', '.ts', '.py'],
+    severity: 'high',
+    description: 'DES and RC4 are broken encryption algorithms with known vulnerabilities.',
+    recommendation: 'Use AES-256-GCM or ChaCha20-Poly1305 for encryption.',
+  },
+
+  // Math.random() for security (CWE-338)
+  {
+    id: 'insecure-random',
+    title: 'Insecure Random Number Generator',
+    pattern: /Math\.random\s*\(\s*\)/,
+    fileTypes: ['.js', '.ts', '.jsx', '.tsx'],
+    severity: 'high',
+    description: 'Math.random() is not cryptographically secure. Using it for tokens, session IDs, passwords, or any security-sensitive value is dangerous.',
+    recommendation: 'Use crypto.randomUUID(), crypto.randomBytes(), or crypto.getRandomValues() for security-sensitive random values.',
+  },
+
+  // Prototype Pollution (CWE-1321)
+  {
+    id: 'prototype-pollution',
+    title: 'Potential Prototype Pollution',
+    pattern: /(?:Object\.assign|_\.merge|_\.extend|_\.defaultsDeep|lodash\.merge|deepmerge)\s*\([^)]*(?:req\.|request\.|params\.|query\.|body\.)/,
+    fileTypes: ['.js', '.ts'],
+    severity: 'high',
+    description: 'Deep object merge with user-controlled input can lead to prototype pollution, allowing attackers to inject properties into all JavaScript objects.',
+    recommendation: 'Validate and sanitize user input before merging. Use a schema validation library (Zod, Joi). Block __proto__, constructor, and prototype keys.',
+  },
+  {
+    id: 'prototype-pollution-bracket',
+    title: 'Potential Prototype Pollution via Bracket Notation',
+    pattern: /\[(?:req\.|request\.|params\.|query\.|body\.)[^\]]+\]\s*=/,
+    fileTypes: ['.js', '.ts'],
+    severity: 'high',
+    description: 'Dynamic property assignment with user-controlled keys can lead to prototype pollution if __proto__ or constructor is used as a key.',
+    recommendation: 'Validate property names against a whitelist. Never use user input directly as object keys.',
+  },
+
+  // Loose Equality with User Input
+  {
+    id: 'loose-equality',
+    title: 'Loose Equality Comparison (==) with User Input',
+    pattern: /(?:req\.|request\.|params\.|query\.|body\.)[^\s]+\s*==[^=]|[^=!]==[^=]\s*(?:req\.|request\.|params\.|query\.|body\.)/,
+    fileTypes: ['.js', '.ts'],
+    severity: 'medium',
+    description: 'Loose equality (==) with user input can lead to type coercion bypasses. For example, "0" == false is true.',
+    recommendation: 'Always use strict equality (===) when comparing user input.',
+  },
+
+  // innerHTML XSS (beyond React)
+  {
+    id: 'xss-innerhtml',
+    title: 'Cross-Site Scripting (XSS) via innerHTML',
+    pattern: /\.innerHTML\s*=\s*(?!['"]<(?:br|hr|p|div)\s*\/?>['"])/,
+    fileTypes: ['.js', '.ts', '.jsx', '.tsx'],
+    severity: 'high',
+    description: 'Setting innerHTML can execute arbitrary JavaScript if the content contains unsanitized user input.',
+    recommendation: 'Use textContent instead of innerHTML. If HTML is needed, use a sanitization library like DOMPurify.',
+  },
+  {
+    id: 'xss-document-write',
+    title: 'Cross-Site Scripting (XSS) via document.write',
+    pattern: /document\.write\s*\(/,
+    fileTypes: ['.js', '.ts', '.jsx', '.tsx'],
+    severity: 'high',
+    description: 'document.write() can inject unsanitized content into the DOM, leading to XSS attacks.',
+    recommendation: 'Use DOM manipulation methods (createElement, appendChild) instead of document.write().',
+  },
+
+  // YAML.load without safe_load (CWE-502)
+  {
+    id: 'yaml-unsafe-load',
+    title: 'Unsafe YAML Deserialization',
+    pattern: /yaml\.load\s*\(/,
+    antiPattern: /safe_load|SafeLoader|yaml\.safe_load/,
+    fileTypes: ['.py'],
+    severity: 'high',
+    description: 'yaml.load() can execute arbitrary Python code during deserialization. This is a remote code execution risk.',
+    recommendation: 'Use yaml.safe_load() or yaml.load(data, Loader=SafeLoader) instead.',
+    fileScope: true,
+  },
+  {
+    id: 'js-yaml-unsafe',
+    title: 'Unsafe YAML Parsing',
+    pattern: /yaml\.load\s*\([^)]*\{[^}]*schema\s*:\s*yaml\.DEFAULT_SCHEMA/,
+    fileTypes: ['.js', '.ts'],
+    severity: 'high',
+    description: 'YAML parsing with DEFAULT_SCHEMA can instantiate JavaScript objects, leading to code execution.',
+    recommendation: 'Use yaml.load() with the default safe schema, or use JSON instead.',
+  },
+
+  // Sensitive Data in Logs (CWE-532)
+  {
+    id: 'sensitive-data-logged',
+    title: 'Sensitive Data May Be Logged',
+    pattern: /(?:console\.log|console\.info|console\.debug|logger?\.\w+)\s*\([^)]*(?:password|secret|token|apiKey|api_key|authorization|credential|private_key|access_token)/i,
+    fileTypes: ['.js', '.ts', '.jsx', '.tsx', '.py'],
+    severity: 'high',
+    description: 'Sensitive data (passwords, tokens, keys) appears to be logged. Logs are often stored in plaintext and accessible to many people.',
+    recommendation: 'Never log sensitive data. If debugging auth, log the event type and user ID only, not the credential.',
+  },
+
+  // Missing CSRF Protection
+  {
+    id: 'no-csrf-protection',
+    title: 'No CSRF Protection Detected',
+    pattern: /(?:app|router)\.(post|put|patch|delete)\s*\(/,
+    antiPattern: /csrf|csurf|csrfToken|_csrf|xsrf|XSRF/i,
+    fileTypes: ['.js', '.ts'],
+    severity: 'medium',
+    description: 'State-changing endpoints detected without CSRF protection. Attackers can trick users into making unintended requests.',
+    recommendation: 'Implement CSRF tokens or use SameSite cookies. For APIs, validate the Origin/Referer header.',
+    fileScope: true,
+  },
+
+  // JWT Algorithm None Attack
+  {
+    id: 'jwt-none-algorithm',
+    title: 'JWT "none" Algorithm Allowed',
+    pattern: /algorithms?\s*:\s*\[.*['"]none['"]/i,
+    fileTypes: ['.js', '.ts'],
+    severity: 'critical',
+    description: 'JWT verification allows the "none" algorithm, which means tokens can be forged without a secret key.',
+    recommendation: 'Explicitly specify allowed algorithms: algorithms: ["HS256"] or ["RS256"]. Never allow "none".',
+  },
+
+  // Unhandled Promise Rejection
+  {
+    id: 'unhandled-async',
+    title: 'Async Route Handler Without Error Handling',
+    pattern: /\.(get|post|put|patch|delete)\s*\(\s*['"][^'"]+['"]\s*,\s*async\s/,
+    antiPattern: /try\s*\{|\.catch\(|asyncHandler|express-async-errors|express-async-handler/i,
+    fileTypes: ['.js', '.ts'],
+    severity: 'medium',
+    description: 'Async Express route handlers without try/catch will crash the server on unhandled rejections.',
+    recommendation: 'Wrap async handlers in try/catch, use express-async-errors, or create an asyncHandler wrapper.',
+    fileScope: true,
+  },
+
+  // ReDoS - Regular Expression Denial of Service (CWE-1333)
+  {
+    id: 'redos-risk',
+    title: 'Potential ReDoS Vulnerability',
+    pattern: /new\s+RegExp\s*\([^)]*(?:req\.|request\.|params\.|query\.|body\.)/,
+    fileTypes: ['.js', '.ts'],
+    severity: 'high',
+    description: 'User input is used to construct a regular expression. Malicious patterns can cause catastrophic backtracking, freezing the server.',
+    recommendation: 'Never build regexes from user input. If needed, escape special characters with a library like escape-string-regexp and set a timeout.',
+  },
+
+  // Insecure Deserialization - JSON.parse with user input and no validation
+  {
+    id: 'unsafe-json-parse',
+    title: 'JSON.parse Without Validation',
+    pattern: /JSON\.parse\s*\(\s*(?:req\.|request\.|body|params|query)/,
+    fileTypes: ['.js', '.ts'],
+    severity: 'medium',
+    description: 'Parsing user-provided JSON without schema validation can lead to unexpected object structures and prototype pollution.',
+    recommendation: 'Validate parsed JSON against a schema using Zod, Joi, or ajv before using it.',
+  },
+
+  // Python subprocess with shell=True
+  {
+    id: 'python-subprocess-shell',
+    title: 'subprocess with shell=True',
+    pattern: /subprocess\.(?:call|run|Popen|check_output|check_call)\s*\([^)]*shell\s*=\s*True/,
+    fileTypes: ['.py'],
+    severity: 'high',
+    description: 'subprocess with shell=True is vulnerable to command injection if user input is included.',
+    recommendation: 'Use subprocess.run() with a list of arguments and shell=False (default).',
+  },
+
+  // Python format string injection
+  {
+    id: 'python-format-injection',
+    title: 'Potential Format String Injection',
+    pattern: /\.format\s*\(\s*(?:request\.|args\.|kwargs|user_input)/,
+    fileTypes: ['.py'],
+    severity: 'medium',
+    description: 'Python format strings with user input can leak sensitive data via attribute access (e.g., {0.__class__}).',
+    recommendation: 'Use f-strings with validated input only, or use a template engine with sandboxing.',
+  },
+
+  // Hardcoded IP / localhost in production code
+  {
+    id: 'hardcoded-localhost',
+    title: 'Hardcoded Localhost/IP Address',
+    pattern: /['"](?:http:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0))[:'"/]/,
+    fileTypes: ['.js', '.ts', '.jsx', '.tsx', '.py'],
+    severity: 'medium',
+    description: 'Hardcoded localhost or IP address found. This will break in production and may indicate a development-only configuration left in code.',
+    recommendation: 'Use environment variables for host configuration. Remove hardcoded localhost references before deploying.',
+  },
+
+  // Missing Authorization on routes
+  {
+    id: 'missing-auth-middleware',
+    title: 'Route Without Authentication Middleware',
+    pattern: /\.(get|post|put|patch|delete)\s*\(\s*['"]\/(?:api|users?|account|settings|profile|dashboard|billing|payment)/i,
+    antiPattern: /(?:auth|authenticate|authorize|protect|guard|verify|middleware|jwt|session|passport|isAuthenticated|requireAuth|ensureAuth)\s*[,(]/i,
+    fileTypes: ['.js', '.ts'],
+    severity: 'high',
+    description: 'Sensitive route appears to lack authentication middleware. Users may access protected resources without logging in.',
+    recommendation: 'Add authentication middleware to all sensitive routes. Use a consistent pattern like router.use(authMiddleware) for route groups.',
+    fileScope: true,
+  },
 ];
 
 const IGNORE_DIRS = new Set([

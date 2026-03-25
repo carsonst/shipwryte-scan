@@ -1,8 +1,16 @@
 const SEVERITY_WEIGHTS = {
-  critical: 15,
-  high: 8,
-  medium: 3,
+  critical: 20,
+  high: 10,
+  medium: 4,
   low: 1,
+};
+
+// Secrets are weighted higher — a leaked key is immediately exploitable
+const CATEGORY_MULTIPLIERS = {
+  secret: 1.5,
+  code: 1.0,
+  config: 0.8,
+  dependency: 0.9,
 };
 
 export function calculateScore(findings) {
@@ -11,12 +19,16 @@ export function calculateScore(findings) {
   let totalPenalty = 0;
 
   for (const f of findings) {
-    totalPenalty += SEVERITY_WEIGHTS[f.severity] || 1;
+    const base = SEVERITY_WEIGHTS[f.severity] || 1;
+    const multiplier = CATEGORY_MULTIPLIERS[f.category] || 1.0;
+    totalPenalty += base * multiplier;
   }
 
-  // Score starts at 100, penalties reduce it
-  // Cap penalty so score doesn't go below 0
-  const score = Math.max(0, Math.round(100 - totalPenalty));
+  // Diminishing returns — first few findings hit hardest,
+  // prevents score from being 0 on any non-trivial codebase
+  const adjustedPenalty = totalPenalty * (1 - Math.min(0.4, findings.length * 0.01));
+
+  const score = Math.max(0, Math.round(100 - adjustedPenalty));
   return score;
 }
 

@@ -20,10 +20,12 @@ program
   .option('--json', 'Output raw JSON to stdout')
   .option('-q, --quiet', 'Suppress progress output')
   .action(async (targetPath, options) => {
-    console.log('');
-    console.log(chalk.bold.cyan('  ⚓ Shipwryte Scan v0.1.0'));
-    console.log(chalk.gray('  Free security scanner for AI-generated code'));
-    console.log('');
+    if (!options.quiet && !options.json) {
+      console.log('');
+      console.log(chalk.bold.cyan('  ⚓ Shipwryte Scan v0.1.0'));
+      console.log(chalk.gray('  Free security scanner for AI-generated code'));
+      console.log('');
+    }
 
     try {
       await runScan(targetPath, options);

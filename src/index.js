@@ -13,38 +13,39 @@ export async function runScan(targetPath, options = {}) {
   const absPath = path.resolve(targetPath);
   const findings = [];
   const scanStart = Date.now();
+  const silent = options.json || options.quiet;
 
   // Run scanners
   if (options.secrets !== false) {
-    const spinner = ora({ text: '  Scanning for hardcoded secrets...', color: 'yellow' }).start();
+    const spinner = silent ? null : ora({ text: '  Scanning for hardcoded secrets...', color: 'yellow' }).start();
     try {
       const secretFindings = await runSecretScanner(absPath);
       findings.push(...secretFindings);
-      spinner.succeed(`  Secrets scan complete — ${secretFindings.length} finding(s)`);
+      spinner?.succeed(`  Secrets scan complete — ${secretFindings.length} finding(s)`);
     } catch (err) {
-      spinner.warn(`  Secrets scan skipped: ${err.message}`);
+      spinner?.warn(`  Secrets scan skipped: ${err.message}`);
     }
   }
 
   if (options.deps !== false) {
-    const spinner = ora({ text: '  Scanning dependencies for known CVEs...', color: 'yellow' }).start();
+    const spinner = silent ? null : ora({ text: '  Scanning dependencies for known CVEs...', color: 'yellow' }).start();
     try {
       const depFindings = await runDependencyScanner(absPath);
       findings.push(...depFindings);
-      spinner.succeed(`  Dependency scan complete — ${depFindings.length} finding(s)`);
+      spinner?.succeed(`  Dependency scan complete — ${depFindings.length} finding(s)`);
     } catch (err) {
-      spinner.warn(`  Dependency scan skipped: ${err.message}`);
+      spinner?.warn(`  Dependency scan skipped: ${err.message}`);
     }
   }
 
   if (options.sast !== false) {
-    const spinner = ora({ text: '  Running static analysis...', color: 'yellow' }).start();
+    const spinner = silent ? null : ora({ text: '  Running static analysis...', color: 'yellow' }).start();
     try {
       const sastFindings = await runSASTScanner(absPath);
       findings.push(...sastFindings);
-      spinner.succeed(`  Static analysis complete — ${sastFindings.length} finding(s)`);
+      spinner?.succeed(`  Static analysis complete — ${sastFindings.length} finding(s)`);
     } catch (err) {
-      spinner.warn(`  Static analysis skipped: ${err.message}`);
+      spinner?.warn(`  Static analysis skipped: ${err.message}`);
     }
   }
 
@@ -62,47 +63,59 @@ export async function runScan(targetPath, options = {}) {
   const score = calculateScore(filtered);
   const counts = categorizeSeverity(filtered);
 
-  // Output
-  console.log('');
-  console.log(chalk.bold('  Results'));
-  console.log(chalk.gray('  ─────────────────────────────'));
+  // Grade
+  let grade = 'F';
+  if (score >= 90) grade = 'A';
+  else if (score >= 80) grade = 'B';
+  else if (score >= 70) grade = 'C';
+  else if (score >= 60) grade = 'D';
 
-  const scoreColor = score >= 80 ? 'green' : score >= 60 ? 'yellow' : 'red';
-  console.log(`  Security Score: ${chalk[scoreColor].bold(score + '/100')}`);
-  console.log('');
+  const result = { score, grade, counts, findings: filtered, scannedFiles: filtered.length, duration: parseFloat(scanDuration) };
 
-  if (counts.critical > 0) console.log(chalk.red(`  🔴 Critical: ${counts.critical}`));
-  if (counts.high > 0) console.log(chalk.redBright(`  🟠 High: ${counts.high}`));
-  if (counts.medium > 0) console.log(chalk.yellow(`  🟡 Medium: ${counts.medium}`));
-  if (counts.low > 0) console.log(chalk.gray(`  🔵 Low: ${counts.low}`));
-  if (filtered.length === 0) console.log(chalk.green('  ✅ No issues found!'));
-
-  console.log(chalk.gray(`\n  Scanned in ${scanDuration}s`));
-
-  // JSON output to stdout
+  // JSON output to stdout — print ONLY JSON, nothing else
   if (options.json) {
-    const result = { score, counts, findings: filtered, scanDuration };
-    console.log(JSON.stringify(result, null, 2));
+    process.stdout.write(JSON.stringify(result, null, 2));
     return result;
   }
 
-  // Generate report file
-  const format = options.output || 'markdown';
-  const ext = format === 'markdown' ? 'md' : format === 'html' ? 'html' : 'json';
-  const outputFile = options.file || `shipwryte-report.${ext}`;
+  // Interactive output
+  if (!options.quiet) {
+    console.log('');
+    console.log(chalk.bold('  Results'));
+    console.log(chalk.gray('  ─────────────────────────────'));
 
-  let reportContent;
-  if (format === 'json') {
-    reportContent = JSON.stringify({ score, counts, findings: filtered, scanDuration }, null, 2);
-  } else if (format === 'html') {
-    reportContent = generateHTMLReport({ score, counts, findings: filtered, scanDuration, targetPath: absPath });
-  } else {
-    reportContent = generateMarkdownReport({ score, counts, findings: filtered, scanDuration, targetPath: absPath });
+    const scoreColor = score >= 80 ? 'green' : score >= 60 ? 'yellow' : 'red';
+    console.log(`  Security Score: ${chalk[scoreColor].bold(score + '/100')}`);
+    console.log('');
+
+    if (counts.critical > 0) console.log(chalk.red(`  🔴 Critical: ${counts.critical}`));
+    if (counts.high > 0) console.log(chalk.redBright(`  🟠 High: ${counts.high}`));
+    if (counts.medium > 0) console.log(chalk.yellow(`  🟡 Medium: ${counts.medium}`));
+    if (counts.low > 0) console.log(chalk.gray(`  🔵 Low: ${counts.low}`));
+    if (filtered.length === 0) console.log(chalk.green('  ✅ No issues found!'));
+
+    console.log(chalk.gray(`\n  Scanned in ${scanDuration}s`));
   }
 
-  writeFileSync(outputFile, reportContent, 'utf-8');
-  console.log(chalk.cyan(`\n  📄 Report saved to ${outputFile}`));
-  console.log('');
+  // Generate report file (skip in quiet mode)
+  if (!options.quiet) {
+    const format = options.output || 'markdown';
+    const ext = format === 'markdown' ? 'md' : format === 'html' ? 'html' : 'json';
+    const outputFile = options.file || `shipwryte-report.${ext}`;
 
-  return { score, counts, findings: filtered, scanDuration };
+    let reportContent;
+    if (format === 'json') {
+      reportContent = JSON.stringify(result, null, 2);
+    } else if (format === 'html') {
+      reportContent = generateHTMLReport({ score, counts, findings: filtered, scanDuration, targetPath: absPath });
+    } else {
+      reportContent = generateMarkdownReport({ score, counts, findings: filtered, scanDuration, targetPath: absPath });
+    }
+
+    writeFileSync(outputFile, reportContent, 'utf-8');
+    console.log(chalk.cyan(`\n  📄 Report saved to ${outputFile}`));
+    console.log('');
+  }
+
+  return result;
 }
