@@ -51,6 +51,8 @@ const SECRET_PATTERNS = [
 const IGNORE_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', '.next', '__pycache__',
   'venv', '.venv', 'vendor', '.cache', 'coverage', '.nyc_output',
+  'test', 'tests', '__tests__', '__mocks__', 'fixtures', 'test-fixtures',
+  'spec', 'e2e', 'cypress', 'playwright',
 ]);
 
 const SCAN_EXTENSIONS = new Set([

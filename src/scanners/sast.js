@@ -550,6 +550,8 @@ const SAST_RULES = [
 const IGNORE_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', '.next', '__pycache__',
   'venv', '.venv', 'vendor', '.cache', 'coverage', '.nyc_output',
+  'test', 'tests', '__tests__', '__mocks__', 'fixtures', 'test-fixtures',
+  'spec', 'e2e', 'cypress', 'playwright',
 ]);
 
 function walkFiles(dir, maxDepth = 10) {
@@ -624,6 +626,14 @@ function runBuiltInSAST(targetPath) {
         // Check line by line
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
+
+          // Skip lines that are regex pattern definitions, string literals defining patterns,
+          // or comments — these are rule definitions, not actual vulnerabilities
+          const trimmed = line.trim();
+          if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) continue;
+          if (/^\s*(?:pattern|regex|antiPattern)\s*:/.test(line)) continue;
+          if (/^\s*(?:title|description|recommendation|id)\s*:/.test(line)) continue;
+
           if (rule.pattern.test(line)) {
             findings.push({
               scanner: 'shipwryte-sast',
