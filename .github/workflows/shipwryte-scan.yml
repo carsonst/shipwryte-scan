@@ -1,0 +1,85 @@
+# Reusable workflow — users copy this into their repo at .github/workflows/shipwryte-scan.yml
+name: Shipwryte Security Scan
+
+on:
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run Shipwryte Scan
+        id: scan
+        run: |
+          npx @shipwryte/scan@latest . \
+            --severity low \
+            --format json > shipwryte-results.json 2>&1 || true
+
+          SCORE=$(node -e "const r=JSON.parse(require('fs').readFileSync('shipwryte-results.json','utf8')); console.log(r.score || 0)")
+          GRADE=$(node -e "const r=JSON.parse(require('fs').readFileSync('shipwryte-results.json','utf8')); console.log(r.grade || 'F')")
+          CRITICAL=$(node -e "const r=JSON.parse(require('fs').readFileSync('shipwryte-results.json','utf8')); console.log((r.findings||[]).filter(f=>f.severity==='critical').length)")
+
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "grade=$GRADE" >> $GITHUB_OUTPUT
+          echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
+
+      - name: Generate Report
+        run: |
+          npx @shipwryte/scan@latest . \
+            --severity low \
+            --format markdown > shipwryte-report.md 2>&1 || true
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('shipwryte-report.md', 'utf8');
+            const score = '${{ steps.scan.outputs.score }}';
+            const grade = '${{ steps.scan.outputs.grade }}';
+
+            const body = `## 🛡️ Shipwryte Security Scan\n\n**Score: ${score}/100 (${grade})**\n\n${report}\n\n---\n*Scanned by [@shipwryte/scan](https://github.com/carsonst/shipwryte-scan)*\n*Need a deeper audit? [Book a human review](https://shipwryte.com)*`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes('Shipwryte Security Scan'));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Fail on critical issues
+        run: |
+          CRITICAL=${{ steps.scan.outputs.critical_count }}
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "::error::Shipwryte found $CRITICAL critical security issue(s)"
+            exit 1
+          fi
