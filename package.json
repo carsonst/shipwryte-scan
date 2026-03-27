@@ -1,6 +1,6 @@
 {
   "name": "@shipwryte/scan",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Free security scanner for AI-generated code. Catch surface-level vulnerabilities in 60 seconds.",
   "main": "src/index.js",
   "files": [

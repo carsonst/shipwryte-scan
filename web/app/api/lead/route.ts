@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
-const SUPABASE_URL = "https://qyvbzpevinqoqrpzbrcj.supabase.co";
-const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5dmJ6cGV2aW5xb3FycHpicmNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2Nzk3MjUsImV4cCI6MjA4OTI1NTcyNX0.HXHGeJeDcengEmXg88l385nyTvVoRhD_8R1-gnwebfw";
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 
 export async function POST(request: Request) {
   try {
@@ -13,7 +12,13 @@ export async function POST(request: Request) {
       return new NextResponse("Invalid email", { status: 400 });
     }
 
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/scan_leads`, {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      console.error("Supabase not configured");
+      return new NextResponse("Lead capture unavailable", { status: 500 });
+    }
+
+    const endpoint = `${SUPABASE_URL}/rest/v1/scan_leads`;
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
