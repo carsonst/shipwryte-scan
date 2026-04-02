@@ -4,6 +4,7 @@ import ora from 'ora';
 import { runSecretScanner } from './scanners/secrets.js';
 import { runDependencyScanner } from './scanners/dependencies.js';
 import { runSASTScanner } from './scanners/sast.js';
+import { runWebScanner } from './scanners/web.js';
 import { calculateScore, categorizeSeverity } from './scoring.js';
 import { generateMarkdownReport } from './reporters/markdown.js';
 import { generateHTMLReport } from './reporters/html.js';
@@ -39,43 +40,61 @@ function countFiles(dir, depth = 10) {
   return count;
 }
 
+function isUrl(input) {
+  return /^https?:\/\//i.test(input) || /^[a-z0-9][-a-z0-9]*\.[a-z]{2,}/i.test(input);
+}
+
 export async function runScan(targetPath, options = {}) {
-  const absPath = path.resolve(targetPath);
+  const isWebScan = isUrl(targetPath);
+  const absPath = isWebScan ? targetPath : path.resolve(targetPath);
   const findings = [];
   const scanStart = Date.now();
   const silent = options.json || options.quiet;
 
-  // Run scanners
-  if (options.secrets !== false) {
-    const spinner = silent ? null : ora({ text: '  Scanning for hardcoded secrets...', color: 'yellow' }).start();
+  if (isWebScan) {
+    // Web URL scan — run the web scanner
+    const spinner = silent ? null : ora({ text: '  Scanning website for security issues...', color: 'yellow' }).start();
     try {
-      const secretFindings = await runSecretScanner(absPath);
-      findings.push(...secretFindings);
-      spinner?.succeed(`  Secrets scan complete — ${secretFindings.length} finding(s)`);
+      const webFindings = await runWebScanner(absPath);
+      findings.push(...webFindings);
+      spinner?.succeed(`  Web scan complete — ${webFindings.length} finding(s)`);
     } catch (err) {
-      spinner?.warn(`  Secrets scan skipped: ${err.message}`);
+      spinner?.fail(`  Web scan failed: ${err.message}`);
+      throw err;
     }
-  }
-
-  if (options.deps !== false) {
-    const spinner = silent ? null : ora({ text: '  Scanning dependencies for known CVEs...', color: 'yellow' }).start();
-    try {
-      const depFindings = await runDependencyScanner(absPath);
-      findings.push(...depFindings);
-      spinner?.succeed(`  Dependency scan complete — ${depFindings.length} finding(s)`);
-    } catch (err) {
-      spinner?.warn(`  Dependency scan skipped: ${err.message}`);
+  } else {
+    // Code scan — run file-based scanners
+    if (options.secrets !== false) {
+      const spinner = silent ? null : ora({ text: '  Scanning for hardcoded secrets...', color: 'yellow' }).start();
+      try {
+        const secretFindings = await runSecretScanner(absPath);
+        findings.push(...secretFindings);
+        spinner?.succeed(`  Secrets scan complete — ${secretFindings.length} finding(s)`);
+      } catch (err) {
+        spinner?.warn(`  Secrets scan skipped: ${err.message}`);
+      }
     }
-  }
 
-  if (options.sast !== false) {
-    const spinner = silent ? null : ora({ text: '  Running static analysis...', color: 'yellow' }).start();
-    try {
-      const sastFindings = await runSASTScanner(absPath);
-      findings.push(...sastFindings);
-      spinner?.succeed(`  Static analysis complete — ${sastFindings.length} finding(s)`);
-    } catch (err) {
-      spinner?.warn(`  Static analysis skipped: ${err.message}`);
+    if (options.deps !== false) {
+      const spinner = silent ? null : ora({ text: '  Scanning dependencies for known CVEs...', color: 'yellow' }).start();
+      try {
+        const depFindings = await runDependencyScanner(absPath);
+        findings.push(...depFindings);
+        spinner?.succeed(`  Dependency scan complete — ${depFindings.length} finding(s)`);
+      } catch (err) {
+        spinner?.warn(`  Dependency scan skipped: ${err.message}`);
+      }
+    }
+
+    if (options.sast !== false) {
+      const spinner = silent ? null : ora({ text: '  Running static analysis...', color: 'yellow' }).start();
+      try {
+        const sastFindings = await runSASTScanner(absPath);
+        findings.push(...sastFindings);
+        spinner?.succeed(`  Static analysis complete — ${sastFindings.length} finding(s)`);
+      } catch (err) {
+        spinner?.warn(`  Static analysis skipped: ${err.message}`);
+      }
     }
   }
 
@@ -100,8 +119,9 @@ export async function runScan(targetPath, options = {}) {
   else if (score >= 70) grade = 'C';
   else if (score >= 60) grade = 'D';
 
-  const scannedFiles = countFiles(absPath);
-  const result = { score, grade, counts, findings: filtered, scannedFiles, duration: parseFloat(scanDuration) };
+  const scannedFiles = isWebScan ? 0 : countFiles(absPath);
+  const scanType = isWebScan ? 'web' : 'code';
+  const result = { score, grade, counts, findings: filtered, scannedFiles, duration: parseFloat(scanDuration), scanType };
 
   // JSON output to stdout — print ONLY JSON, nothing else
   if (options.json) {

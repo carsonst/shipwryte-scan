@@ -11,6 +11,7 @@ const CATEGORY_MULTIPLIERS = {
   code: 1.0,
   config: 0.8,
   dependency: 0.9,
+  web: 1.0,
 };
 
 export function calculateScore(findings) {

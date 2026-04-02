@@ -43,10 +43,10 @@ function getScannerPath() {
   );
 }
 
-async function runScan(codeDir: string, id: string) {
+async function runScan(target: string, id: string) {
   const scanResult = await exec(
     "node",
-    [getScannerPath(), codeDir, "--json", "-q"],
+    [getScannerPath(), target, "--json", "-q"],
     { timeout: 120000, maxBuffer: 10 * 1024 * 1024 }
   ).catch((e) => {
     if (e.stdout) return { stdout: e.stdout, stderr: e.stderr };
@@ -67,7 +67,12 @@ async function runScan(codeDir: string, id: string) {
     findings: parsed.findings ?? [],
     scannedFiles: parsed.scannedFiles ?? 0,
     duration: parsed.duration ?? 0,
+    scanType: parsed.scanType ?? "code",
   };
+}
+
+async function runWebScan(url: string, id: string) {
+  return runScan(url, id);
 }
 
 async function downloadAndExtractRepo(
@@ -113,13 +118,47 @@ export async function POST(request: Request) {
   try {
     await mkdir(workDir, { recursive: true });
 
-    // GitHub repo URL
+    // JSON body — either GitHub repo URL or website URL
     if (contentType.includes("application/json")) {
       const body = await request.json();
-      const { repoUrl } = body;
+      const { repoUrl, websiteUrl } = body;
 
+      // Website URL scan
+      if (websiteUrl && typeof websiteUrl === "string") {
+        const trimmed = websiteUrl.trim();
+        let targetUrl: string;
+        try {
+          const u = new URL(
+            trimmed.startsWith("http") ? trimmed : `https://${trimmed}`
+          );
+          // Block scanning localhost/private IPs
+          const hostname = u.hostname;
+          if (
+            hostname === "localhost" ||
+            hostname === "127.0.0.1" ||
+            hostname === "0.0.0.0" ||
+            hostname.startsWith("192.168.") ||
+            hostname.startsWith("10.") ||
+            hostname.startsWith("172.") ||
+            hostname.endsWith(".local")
+          ) {
+            return new NextResponse("Cannot scan local/private addresses", {
+              status: 400,
+              headers: cors,
+            });
+          }
+          targetUrl = u.toString();
+        } catch {
+          return new NextResponse("Invalid URL", { status: 400, headers: cors });
+        }
+
+        const result = await runWebScan(targetUrl, id);
+        return NextResponse.json(result, { headers: cors });
+      }
+
+      // GitHub repo URL scan
       if (!repoUrl || typeof repoUrl !== "string") {
-        return new NextResponse("Missing repo URL", { status: 400, headers: cors });
+        return new NextResponse("Missing repo or website URL", { status: 400, headers: cors });
       }
 
       const repoUrlStr = repoUrl

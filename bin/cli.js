@@ -8,9 +8,9 @@ const program = new Command();
 
 program
   .name('shipwryte-scan')
-  .description('Free security scanner for AI-generated code')
-  .version('0.1.0')
-  .argument('[path]', 'Path to scan', '.')
+  .description('Free security scanner for AI-generated code and live websites')
+  .version('0.3.0')
+  .argument('[target]', 'Path to scan or website URL (e.g., https://example.com)', '.')
   .option('-o, --output <format>', 'Output format: markdown, json, html', 'markdown')
   .option('-f, --file <path>', 'Output file path (defaults to shipwryte-report.{ext})')
   .option('--no-secrets', 'Skip secret detection')
@@ -22,7 +22,7 @@ program
   .action(async (targetPath, options) => {
     if (!options.quiet && !options.json) {
       console.log('');
-      console.log(chalk.bold.cyan('  ⚓ Shipwryte Scan v0.1.0'));
+      console.log(chalk.bold.cyan('  ⚓ Shipwryte Scan v0.3.0'));
       console.log(chalk.gray('  Free security scanner for AI-generated code'));
       console.log('');
     }
